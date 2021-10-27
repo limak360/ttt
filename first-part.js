@@ -34,6 +34,17 @@ const User = sequelize.define("user", {
   user_online: Sequelize.BOOLEAN,
 });
 
+const Message = sequelize.define("message", {
+  message_id: {
+    type: Sequelize.INTEGER,
+    primaryKey: true,
+    autoIncrement: true,
+  },
+  message_from_user_id: Sequelize.STRING,
+  message_to_user_id: Sequelize.STRING,
+  message_text: Sequelize.STRING,
+});
+
 // synchroniznacja bazy danych - np. tworzenie tabel
 sequelize.sync({ force: true }).then(() => {
   console.log(`Database & tables created!`);
@@ -55,7 +66,7 @@ function register(request, response) {
         User.create({
           user_name: user_name,
           user_password: user_password,
-          user_online: null,
+          user_online: false,
         })
           .then(() => response.send({ register: true }))
           .catch(function (err) {
@@ -120,6 +131,50 @@ function getUsers(request, response) {
   User.findAll().then((users) => response.json(users));
 }
 
+function sendMessages(request, response) {
+  var message_text = request.body.message_text;
+  var to = request.body.message_to_user_id;
+  console.log(
+    `Received message => ${message_text} from ${request.session.user_id} to ${to}`
+  );
+
+  User.findAll({ where: { user_id: to } }).then((users) => {
+    if (users.length >= 1) {
+      var mes = {
+        message_from_user_id: 0, //TODO
+        message_to_user_id: users[0].user_id,
+        message_text: "", //TODO
+      };
+      var user = users[0];
+      Message.create(mes)
+        .then((mes) => {
+          if (user.user_id in onlineUsers) {
+            // Wysyłanie wiadomości do użytkownika
+          }
+          if (mes.message_from_user_id !== mes.message_to_user_id) {
+            if (mes.message_from_user_id in onlineUsers) {
+              // Wysyłanie wiadomości do samego siebie jeżeli użytkownik nie wysyła wiadomości do siebie.
+            }
+          }
+
+          response.send({ sending: true });
+        })
+        .catch(function (err) {
+          console.log(err);
+          response.send({ error: err });
+        });
+    } else {
+      response.send({ error: "User not exists" });
+    }
+  });
+}
+
+function getMessages(request, response) {
+
+  // register
+  // register
+}
+
 app.get("/api/test-get", testGet);
 
 app.post("/api/register/", [register]);
@@ -131,6 +186,10 @@ app.get("/api/login-test/", [checkSessions, loginTest]);
 app.get("/api/logout/", [checkSessions, logout]);
 
 app.get("/api/users/", [checkSessions, getUsers]);
+
+app.get("/api/messages/:id", [checkSessions, getMessages]);
+
+app.post("/api/messages/", [checkSessions, sendMessages]);
 
 //WS
 
@@ -166,6 +225,19 @@ wss.on("connection", function (ws, request) {
     }
   });
   onlineUsers[request.session.user_id] = ws;
+  var keys = Object.keys(onlineUsers);
+
+  User.findAll().then((users) => {
+    for (user of users) {
+      //jakis blad logiczny  dla kazdego robi nie dla wybranego
+      if (!(keys[user.dataValues.user_id - 1] === "undefined")) {
+        User.update(
+          { user_online: true },
+          { where: { user_id: user.dataValues.user_id } }
+        ).then(console.log("Updated"));
+      }
+    }
+  });
 
   ws.on("message", function (message) {
     console.log(message);
@@ -179,5 +251,16 @@ wss.on("connection", function (ws, request) {
 
   ws.on("close", () => {
     delete onlineUsers[request.session.user_id];
+    var keys = Object.keys(onlineUsers);
+    User.findAll().then((users) => {
+      for (user of users) {
+        if (!(keys[user.dataValues.user_id - 1] === "undefined")) {
+          User.update(
+            { user_online: false },
+            { where: { user_id: user.dataValues.user_id } }
+          ).then(console.log("Updated"));
+        }
+      }
+    });
   });
 });
