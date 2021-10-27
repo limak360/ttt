@@ -68,28 +68,17 @@ function register(request, response) {
   }
 }
 
-var promiseUserId = null;
-
 function login(request, response) {
   // TODO: logowanie
   var user_name = request.body.user_name;
   var user_password = request.body.user_password;
   if (user_name && user_password) {
-    User.count({
+    User.findAll({
       where: { user_name: user_name, user_password: user_password },
-    }).then((count) => {
-      if (count != 0) {
+    }).then((users) => {
+      if (users.length > 0) {
         request.session.loggedin = true;
-
-        async function setUserId() {
-          return await UserIdPromise(
-            (user_nam = user_name),
-            (user_password = user_password)
-          );
-        }
-        request.session.user_id = setUserId();
-        promiseUserId = setUserId();
-
+        request.session.user_id = users[0].dataValues.user_id;
         response.send({ loggedin: true });
       } else {
         console.log("user doesnt exist");
@@ -100,17 +89,6 @@ function login(request, response) {
     console.log("Incorrect credentials");
     response.send({ loggedin: false });
   }
-}
-
-async function UserIdPromise(user_name, user_password) {
-  return User.findAll({
-    where: {
-      user_name: user_name,
-      user_password: user_password,
-    },
-  }).then((data) => {
-    return data[0].user_id;
-  });
 }
 
 function loginTest(request, response) {
@@ -139,8 +117,7 @@ function checkSessions(request, response, next) {
 
 function getUsers(request, response) {
   //TODO: wysłanie listy użytkowników klientowi
-  User.findAll().then((users) => response.json(users)); // pokazuje zarejestrowanych nie zalogowanych
-  //   response.send({ data: [] });
+  User.findAll().then((users) => response.json(users));
 }
 
 app.get("/api/test-get", testGet);
@@ -169,13 +146,11 @@ const wss = new WebSocket.Server({
 server.on("upgrade", function (request, socket, head) {
   // Sprawdzenie czy dla danego połączenia istnieje sesja
   sessionParser(request, {}, () => {
-    async () => {
-      if (!(await promiseUserId)) {
-        // tylko raz mozna odczytac promise
-        socket.destroy();
-        return;
-      }
-    };
+    if (!request.session.user_id) {
+      socket.destroy();
+      return;
+    }
+
     wss.handleUpgrade(request, socket, head, function (ws) {
       wss.emit("connection", ws, request);
     });
@@ -190,21 +165,7 @@ wss.on("connection", function (ws, request) {
       client.send(JSON.stringify({ status: 2 }));
     }
   });
-
-  const setConnected = async () => {
-    const id = await promiseUserId; // to nie zadziala  tylko raz mozna odczytac promise
-    socket.destroy();
-    onlineUsers[id] = ws;
-    const user = User.findByPk(id).then((data) => {
-      console.log("OBJEKT on connection" + JSON.stringify(data));
-    });
-
-    user.user_online = true;
-    User.update(user, {
-      where: { id: id },
-    });
-  };
-  setConnected();
+  onlineUsers[request.session.user_id] = ws;
 
   ws.on("message", function (message) {
     console.log(message);
@@ -217,19 +178,6 @@ wss.on("connection", function (ws, request) {
   });
 
   ws.on("close", () => {
-    const setDisconnected = async () => {
-      const id = await promiseUserId; // to nie zadziala  tylko raz mozna odczytac promise
-      socket.destroy();
-      delete onlineUsers[id];
-      const user = User.findByPk(id).then((data) => {
-        console.log("OBJEKT on disconnection" + JSON.stringify(data));
-      });
-
-      user.user_online = false;
-      User.update(user, {
-        where: { id: id },
-      });
-    };
-    setDisconnected();
+    delete onlineUsers[request.session.user_id];
   });
 });
