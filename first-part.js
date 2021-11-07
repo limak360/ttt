@@ -170,9 +170,15 @@ function sendMessages(request, response) {
 }
 
 function getMessages(request, response) {
+  // Sprawdzenie czy dla danego połączenia istnieje sesja
+  sessionParser(request, {}, () => {
+    if (!request.session.user_id) { // po id z urla
+      //send list of messages to the user
+      
 
-  // register
-  // register
+      response.send("todo");
+    }
+  });
 }
 
 app.get("/api/test-get", testGet);
@@ -229,7 +235,7 @@ wss.on("connection", function (ws, request) {
 
   User.findAll().then((users) => {
     for (user of users) {
-      //jakis blad logiczny  dla kazdego robi nie dla wybranego
+      //jakis blad logiczny  dla kazdego robi nie dla wybranego, przeniesc do funkcji
       if (!(keys[user.dataValues.user_id - 1] === "undefined")) {
         User.update(
           { user_online: true },
@@ -264,3 +270,5 @@ wss.on("connection", function (ws, request) {
     });
   });
 });
+
+function checkIfUserIsOnline() {}
